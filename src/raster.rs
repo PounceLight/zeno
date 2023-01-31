@@ -77,6 +77,7 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
         apply: &mut impl FnMut(&mut Self),
         fill: Fill,
         buffer: &mut [u8],
+        blend: impl Fn(&mut u8, u8),
         pitch: usize,
         y_up: bool,
     ) {
@@ -130,7 +131,7 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
                         let c = coverage(fill, cover);
                         let xi = x as usize;
                         for b in &mut row[xi..xi + count] {
-                            *b = c;
+                            blend(b, c);
                         }
                     }
                     cover = cover.wrapping_add(cell.cover.wrapping_mul(ONE_PIXEL * 2));
@@ -140,7 +141,7 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
                         let c = coverage(fill, area);
                         let xi = cell.x as usize;
                         for b in &mut row[xi..xi + count] {
-                            *b = c;
+                            blend(b, c);
                         }
                     }
                     x = cell.x + 1;
@@ -154,7 +155,7 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
                     let c = coverage(fill, cover);
                     let xi = x as usize;
                     for b in &mut row[xi..xi + count] {
-                        *b = c;
+                        blend(b, c);
                     }
                 }
             }

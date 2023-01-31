@@ -167,6 +167,33 @@ where
     /// is primarily useful for rendering into tiled images such as texture
     /// atlases. If left unspecified, the buffer is assumed to be linear and
     /// tightly packed.
+    /// Uses the provided function to blend new coverage values into the buffer.
+    pub fn blend_into(
+        &self,
+        buffer: &mut [u8],
+        blend: impl Fn(&mut u8, u8),
+        pitch: Option<usize>,
+    ) -> Placement {
+        let (offset, placement) = self.placement();
+        let pitch = match pitch {
+            Some(pitch) => pitch,
+            _ => {
+                placement.width as usize
+                    * match self.format {
+                        Format::Alpha => 1,
+                        _ => 4,
+                    }
+            }
+        };
+        render(self, offset, &placement, buffer, blend, pitch);
+        placement
+    }
+
+    /// Renders the mask into a byte buffer. If specified, the pitch describes
+    /// the number of bytes between subsequent rows of the target buffer. This
+    /// is primarily useful for rendering into tiled images such as texture
+    /// atlases. If left unspecified, the buffer is assumed to be linear and
+    /// tightly packed.
     pub fn render_into(&self, buffer: &mut [u8], pitch: Option<usize>) -> Placement {
         let (offset, placement) = self.placement();
         let pitch = match pitch {
@@ -179,7 +206,14 @@ where
                     }
             }
         };
-        render(self, offset, &placement, buffer, pitch);
+        render(
+            self,
+            offset,
+            &placement,
+            buffer,
+            |dst, src| *dst = src,
+            pitch,
+        );
         placement
     }
 
@@ -196,7 +230,14 @@ where
                 Format::Alpha => 1,
                 _ => 4,
             };
-        render(self, offset, &placement, &mut buf, pitch);
+        render(
+            self,
+            offset,
+            &placement,
+            &mut buf,
+            |dst, src| *dst = src,
+            pitch,
+        );
         (buf, placement)
     }
 
@@ -252,6 +293,7 @@ pub fn render<'a, 'c, D>(
     offset: Vector,
     placement: &Placement,
     buf: &mut [u8],
+    blend: impl Fn(&mut u8, u8),
     pitch: usize,
 ) where
     D: PathData,
@@ -303,7 +345,7 @@ pub fn render<'a, 'c, D>(
                     let mut i = 0;
                     let mut j = x * 4;
                     while i < count {
-                        buf[j] = coverage;
+                        blend(&mut buf[j], coverage);
                         i += 1;
                         j += 4;
                     }
@@ -324,7 +366,7 @@ pub fn render<'a, 'c, D>(
                     let mut i = 0;
                     let mut j = x * 4 + 1;
                     while i < count {
-                        buf[j] = coverage;
+                        blend(&mut buf[j], coverage);
                         i += 1;
                         j += 4;
                     }
@@ -345,7 +387,7 @@ pub fn render<'a, 'c, D>(
                     let mut i = 0;
                     let mut j = x * 4 + 2;
                     while i < count {
-                        buf[j] = coverage;
+                        blend(&mut buf[j], coverage);
                         i += 1;
                         j += 4;
                     }
@@ -361,6 +403,7 @@ pub fn render<'a, 'c, D>(
                 },
                 fill,
                 buf,
+                blend,
                 pitch,
                 y_up,
             );
@@ -384,7 +427,7 @@ pub fn render<'a, 'c, D>(
                     let mut i = 0;
                     let mut j = x * 4;
                     while i < count {
-                        buf[j] = coverage;
+                        blend(&mut buf[j], coverage);
                         i += 1;
                         j += 4;
                     }
@@ -405,7 +448,7 @@ pub fn render<'a, 'c, D>(
                     let mut i = 0;
                     let mut j = x * 4 + 1;
                     while i < count {
-                        buf[j] = coverage;
+                        blend(&mut buf[j], coverage);
                         i += 1;
                         j += 4;
                     }
@@ -426,7 +469,7 @@ pub fn render<'a, 'c, D>(
                     let mut i = 0;
                     let mut j = x * 4 + 2;
                     while i < count {
-                        buf[j] = coverage;
+                        blend(&mut buf[j], coverage);
                         i += 1;
                         j += 4;
                     }
@@ -442,6 +485,7 @@ pub fn render<'a, 'c, D>(
                 },
                 fill,
                 buf,
+                blend,
                 pitch,
                 y_up,
             );
