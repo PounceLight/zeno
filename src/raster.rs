@@ -77,9 +77,10 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
         apply: &mut impl FnMut(&mut Self),
         fill: Fill,
         buffer: &mut [u8],
-        blend: impl Fn(&mut u8, u8),
         pitch: usize,
         y_up: bool,
+        blend: impl Fn(&mut u8, u8),
+        mut span_touched: impl FnMut(std::ops::Range<usize>, usize),
     ) {
         let w = width as i32;
         let h = height as i32;
@@ -114,11 +115,8 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
         for (i, &index) in indices.iter().enumerate() {
             if index != -1 {
                 let y = ((i as i32) - min.y) as usize;
-                let row_offset = if y_up {
-                    (pitch * (height - 1 - y)) as usize
-                } else {
-                    (pitch * y) as usize
-                };
+                let y = if y_up { height - 1 - y } else { y };
+                let row_offset = (pitch * y) as usize;
                 let row = &mut buffer[row_offset..];
                 let mut x = min.x;
                 let mut cover = 0;
@@ -130,6 +128,8 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
                         let count = (cell.x - x) as usize;
                         let c = coverage(fill, cover);
                         let xi = x as usize;
+
+                        span_touched(xi..xi + count, y);
                         for b in &mut row[xi..xi + count] {
                             blend(b, c);
                         }
@@ -140,6 +140,8 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
                         let count = 1;
                         let c = coverage(fill, area);
                         let xi = cell.x as usize;
+
+                        span_touched(xi..xi + count, y);
                         for b in &mut row[xi..xi + count] {
                             blend(b, c);
                         }
@@ -154,6 +156,8 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
                     let count = (max.x - x) as usize;
                     let c = coverage(fill, cover);
                     let xi = x as usize;
+
+                    span_touched(xi..xi + count, y);
                     for b in &mut row[xi..xi + count] {
                         blend(b, c);
                     }
@@ -172,6 +176,7 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
         pitch: usize,
         y_up: bool,
         write: &mut impl FnMut(usize, usize, usize, u8),
+        span_touched: &mut impl FnMut(std::ops::Range<usize>, usize),
     ) {
         let w = width as i32;
         let h = height as i32;
@@ -206,11 +211,8 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
         for (i, &index) in indices.iter().enumerate() {
             if index != -1 {
                 let y = ((i as i32) - min.y) as usize;
-                let row_offset = if y_up {
-                    (pitch * (height - 1 - y)) as usize
-                } else {
-                    (pitch * y) as usize
-                };
+                let y = if y_up { height - 1 - y } else { y };
+                let row_offset = (pitch * y) as usize;
                 let mut x = min.x;
                 let mut cover = 0;
                 let mut area;
@@ -221,6 +223,7 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
                         let count = (cell.x - x) as usize;
                         let c = coverage(fill, cover);
                         let xi = x as usize;
+                        span_touched(xi..xi + count, y);
                         write(row_offset, xi, count, c);
                     }
                     cover = cover.wrapping_add(cell.cover.wrapping_mul(ONE_PIXEL * 2));
@@ -229,6 +232,7 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
                         let count = 1;
                         let c = coverage(fill, area);
                         let xi = cell.x as usize;
+                        span_touched(xi..xi + count, y);
                         write(row_offset, xi, count, c);
                     }
                     x = cell.x + 1;
@@ -241,6 +245,7 @@ impl<'a, S: RasterStorage> Rasterizer<'a, S> {
                     let count = (max.x - x) as usize;
                     let c = coverage(fill, cover);
                     let xi = x as usize;
+                    span_touched(xi..xi + count, y);
                     write(row_offset, xi, count, c);
                 }
             }

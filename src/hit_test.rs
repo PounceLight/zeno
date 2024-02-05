@@ -72,14 +72,14 @@ where
                 .offset(p)
                 .transform(self.transform)
                 .size(1, 1)
-                .render_into(&mut buf, None);
+                .render_into(&mut buf, None, |_, _| {});
         } else {
             Mask::new(&self.data)
                 .style(self.style)
                 .offset(p)
                 .transform(self.transform)
                 .size(1, 1)
-                .render_into(&mut buf, None);
+                .render_into(&mut buf, None, |_, _| {});
         }
         if self.threshold == 0xFF {
             buf[0] >= self.threshold

@@ -167,34 +167,16 @@ where
     /// is primarily useful for rendering into tiled images such as texture
     /// atlases. If left unspecified, the buffer is assumed to be linear and
     /// tightly packed.
+    ///
     /// Uses the provided function to blend new coverage values into the buffer.
     pub fn blend_into(
         &self,
         buffer: &mut [u8],
-        blend: impl Fn(&mut u8, u8),
         pitch: Option<usize>,
+        blend: impl Fn(&mut u8, u8),
+        // Called with (xmin..xmax, y) for every span touched.
+        mut span_touched: impl FnMut(std::ops::Range<usize>, usize),
     ) -> Placement {
-        let (offset, placement) = self.placement();
-        let pitch = match pitch {
-            Some(pitch) => pitch,
-            _ => {
-                placement.width as usize
-                    * match self.format {
-                        Format::Alpha => 1,
-                        _ => 4,
-                    }
-            }
-        };
-        render(self, offset, &placement, buffer, blend, pitch);
-        placement
-    }
-
-    /// Renders the mask into a byte buffer. If specified, the pitch describes
-    /// the number of bytes between subsequent rows of the target buffer. This
-    /// is primarily useful for rendering into tiled images such as texture
-    /// atlases. If left unspecified, the buffer is assumed to be linear and
-    /// tightly packed.
-    pub fn render_into(&self, buffer: &mut [u8], pitch: Option<usize>) -> Placement {
         let (offset, placement) = self.placement();
         let pitch = match pitch {
             Some(pitch) => pitch,
@@ -211,14 +193,54 @@ where
             offset,
             &placement,
             buffer,
-            |dst, src| *dst = src,
             pitch,
+            blend,
+            &mut span_touched,
+        );
+        placement
+    }
+
+    /// Renders the mask into a byte buffer. If specified, the pitch describes
+    /// the number of bytes between subsequent rows of the target buffer. This
+    /// is primarily useful for rendering into tiled images such as texture
+    /// atlases. If left unspecified, the buffer is assumed to be linear and
+    /// tightly packed.
+    pub fn render_into(
+        &self,
+        buffer: &mut [u8],
+        pitch: Option<usize>,
+        // Called with (xmin..xmax, y) for every span touched.
+        mut span_touched: impl FnMut(std::ops::Range<usize>, usize),
+    ) -> Placement {
+        let (offset, placement) = self.placement();
+        let pitch = match pitch {
+            Some(pitch) => pitch,
+            _ => {
+                placement.width as usize
+                    * match self.format {
+                        Format::Alpha => 1,
+                        _ => 4,
+                    }
+            }
+        };
+        render(
+            self,
+            offset,
+            &placement,
+            buffer,
+            pitch,
+            |dst, src| *dst = src,
+            &mut span_touched,
         );
         placement
     }
 
     /// Renders the mask to a newly allocated buffer.
-    pub fn render(&self) -> (Vec<u8>, Placement) {
+    pub fn render(
+        &self,
+        // Called with (xmin..xmax, y) for every span touched.
+        mut span_touched: impl FnMut(std::ops::Range<usize>, usize),
+    ) -> (Vec<u8>, Placement) {
         let mut buf = Vec::new();
         let (offset, placement) = self.placement();
         buf.resize(
@@ -235,8 +257,9 @@ where
             offset,
             &placement,
             &mut buf,
-            |dst, src| *dst = src,
             pitch,
+            |dst, src| *dst = src,
+            &mut span_touched,
         );
         (buf, placement)
     }
@@ -293,8 +316,9 @@ pub fn render<'a, 'c, D>(
     offset: Vector,
     placement: &Placement,
     buf: &mut [u8],
-    blend: impl Fn(&mut u8, u8),
     pitch: usize,
+    blend: impl Fn(&mut u8, u8),
+    span_touched: &mut impl FnMut(std::ops::Range<usize>, usize),
 ) where
     D: PathData,
 {
@@ -350,6 +374,7 @@ pub fn render<'a, 'c, D>(
                         j += 4;
                     }
                 },
+                span_touched,
             );
             ras.rasterize_write(
                 shift + subpx[1],
@@ -371,6 +396,7 @@ pub fn render<'a, 'c, D>(
                         j += 4;
                     }
                 },
+                span_touched,
             );
             ras.rasterize_write(
                 shift + subpx[2],
@@ -392,6 +418,7 @@ pub fn render<'a, 'c, D>(
                         j += 4;
                     }
                 },
+                span_touched,
             );
         } else {
             ras.rasterize(
@@ -403,9 +430,10 @@ pub fn render<'a, 'c, D>(
                 },
                 fill,
                 buf,
-                blend,
                 pitch,
                 y_up,
+                blend,
+                span_touched,
             );
         }
     } else {
@@ -432,6 +460,7 @@ pub fn render<'a, 'c, D>(
                         j += 4;
                     }
                 },
+                span_touched,
             );
             ras.rasterize_write(
                 shift + subpx[1],
@@ -453,6 +482,7 @@ pub fn render<'a, 'c, D>(
                         j += 4;
                     }
                 },
+                span_touched,
             );
             ras.rasterize_write(
                 shift + subpx[2],
@@ -474,6 +504,7 @@ pub fn render<'a, 'c, D>(
                         j += 4;
                     }
                 },
+                span_touched,
             );
         } else {
             ras.rasterize(
@@ -485,9 +516,10 @@ pub fn render<'a, 'c, D>(
                 },
                 fill,
                 buf,
-                blend,
                 pitch,
                 y_up,
+                blend,
+                span_touched,
             );
         }
     }
